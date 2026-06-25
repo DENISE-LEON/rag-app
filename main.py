@@ -64,9 +64,8 @@ qa_chain = RetrievalQA.from_chain_type(
 #5. query time
 print("Ask a question about your documents or type 0 to quit:")
 while True:
-    query = input("Your question:")
+    query = input("Your questimon:")
     if query == "0":
         break
-
-response = qa_chain.invoke(query)
-print(f"\nAI Response: {response['result']}")
+    response = qa_chain.invoke(query)
+    print(f"\nAI Response: {response['result']}")
