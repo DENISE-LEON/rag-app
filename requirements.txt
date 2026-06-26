@@ -1,0 +1,8 @@
+pip install chromadb
+langchain
+langchain-anthropic
+langchain-community
+langchain-huggingface
+langchain-text-splitters
+pypdf
+python-dotenv
