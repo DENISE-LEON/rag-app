@@ -14,8 +14,9 @@ from langchain_community.vectorstores import Chroma
 # Chain connects the database to the LLM to provide the final answer
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-
+from langchain.core.messages import HumanMessage
 #read the .env file and get the API key
+
 load_dotenv()
 api_key = os.getenv("ANTHROPIC_API_KEY")
 
@@ -46,8 +47,8 @@ Question: {question}
 Answer:"""
 )
 
-
-
+def query_translation(query):
+    return
 
 def create_directory_loader(file_ext, loader_cls):
     # This helper function creates a loader for a specific extension
@@ -64,6 +65,19 @@ for loader in loader_list:
     # Load the documents and add them to main list
     docs.extend(loader.load())
 print(f"Loaded {len(docs)} document pages.")
+
+loaded_extensions = set()
+csv_file_paths = []
+
+for doc in docs:
+    source = doc.metadata.get("source", "")
+    ext = os.path.splitext(source)[1].lower()
+    loaded_extensions.add(ext)
+    if ext == ".csv":
+        csv_file_paths.append(source)
+
+print(f"Loaded file extensions: {', '.join(loaded_extensions)}")
+print(f"CSV file paths: {', '.join(csv_file_paths)}")
 
 #2. split the docs into chunks 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
