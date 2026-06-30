@@ -3,7 +3,7 @@ import os
 #for reading .env file
 from dotenv import load_dotenv
 #doc loaders, diff types of files
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, CSVLoader, TextLoader
+from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, CSVLoader, TextLoader, StructuredExcelLoader
 #text splitters
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 # Embeddings turn text into mathematical vectors (numbers)
@@ -15,6 +15,7 @@ from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.core.messages import HumanMessage
+from core.aggregates import is_aggregate_query, run_pandas_query
 #read the .env file and get the API key
 
 load_dotenv()
@@ -26,7 +27,9 @@ api_key = os.getenv("ANTHROPIC_API_KEY")
 loaders = {
     ".pdf": PyPDFLoader,
     ".txt": TextLoader,
-    ".csv": CSVLoader
+    ".csv": CSVLoader,
+    ".xls": StructuredExcelLoader,
+    ".xlsx": StructuredExcelLoader,
 }
 
 #prompt template handles how AI responds(grounding, conciseness, and source citation)
@@ -47,7 +50,7 @@ Question: {question}
 Answer:"""
 )
 
-def query_translation(query):
+def query_translation(query:str):
     return
 
 def create_directory_loader(file_ext, loader_cls):
@@ -66,29 +69,41 @@ for loader in loader_list:
     docs.extend(loader.load())
 print(f"Loaded {len(docs)} document pages.")
 
-loaded_extensions = set()
-csv_file_paths = []
+loaded_extensions = set() #no duplicates
+tabular_extensions = {".csv", ".xls", ".xlsx"}
+tabular_file_paths = []
 
 for doc in docs:
     source = doc.metadata.get("source", "")
     ext = os.path.splitext(source)[1].lower()
     loaded_extensions.add(ext)
-    if ext == ".csv":
-        csv_file_paths.append(source)
+    if ext in tabular_extensions:
+        tabular_file_paths.append(source)
 
 print(f"Loaded file extensions: {', '.join(loaded_extensions)}")
-print(f"CSV file paths: {', '.join(csv_file_paths)}")
+print(f"Tabular file paths: {', '.join(tabular_file_paths)}")
 
 #2. split the docs into chunks 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
 splits = text_splitter.split_documents(docs)
 #chunk_overlap ensures that the end of one piece and the start of the next share some text so context isn't lost.
 
+def route_query(query: str) -> str:
+    has_tabular = bool(loaded_extensions & tabular_extensions) 
+    only_tabular = loaded_extensions.issubset(tabular_extensions)
+    aggregate_intent = is_aggregate_query(query)
+
+    if has_tabular and aggregate_intent:
+        return "pandas"
+    return "rag"
+
 #3. embedding & storage 
 vectorstore = Chroma.from_documents( #turns vectors into searchable index used for semantics
         documents=splits, 
         embedding=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2") #converts text chunks into vectors
     )
+
+
 
 #4. retrieval setup
 llm = ChatAnthropic(model_name="claude-haiku-4-5", temperature=0)  #temperature how creative the AI's responses are, 0 means more factual
