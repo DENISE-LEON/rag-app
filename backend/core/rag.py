@@ -15,10 +15,12 @@ from langchain.prompts import PromptTemplate
 from langchain.core.messages import HumanMessage
 #processes query + docs, calculates token level similarity
 from sentence_transformers import CrossEncoder
+from backend.core.aggregates import build_pandas_summary, _build_tabular_metadata_hint
+import backend.config as cfg
 #read the .env file and get the API key
 load_dotenv()
 api_key = os.getenv("ANTHROPIC_API_KEY")
-llm = ChatAnthropic(model_name="claude-haiku-4-5", temperature=0)
+llm = cfg.llm
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
@@ -28,23 +30,30 @@ def rag_pipeline(query:str, all_docs):
     docs = _flatten_docs(all_docs)
     #split and embed the langchain docs
     vector_store = _embed_docs(docs)
-    #prompt template
-    template = rag_template
     #retrieve relevant docs and answer query
     retrieved_docs = _retrieve_docs(query,vector_store)
     #rerank retrieved docs 
     reranked_docs = _rerank_docs(query, retrieved_docs)
     #get the docs metadata and format for llm to cite
     context, sources = _build_cited_context(reranked_docs)
-    response = _generate_answer(query, context)
-    return {
-        "query": query,
-        "response": response,
-        "sources": sources
-    }
+    response = _generate_rag_answer(query, context)
+    return response, sources
+#same pipeline as rag, only differences are the prompt template & query translation
+def analysis_pipeline(query: str, all_docs, tabular_files):
+    docs = _flatten_docs(all_docs)
+    vector_store = _embed_docs(docs)
 
-def analysis_pipeline():
-    
+    metadata_hint = _build_tabular_metadata_hint(tabular_files)
+    translated_query = _translate_analysis_query(query, metadata_hint)
+
+    retrieved_docs = _retrieve_docs(translated_query, vector_store)
+    reranked_docs = _rerank_docs(translated_query, retrieved_docs)
+
+    context, sources = _build_cited_context(reranked_docs)
+    summary = build_pandas_summary(tabular_files)
+
+    response = _generate_analysis_answer(query, context, summary)
+    return response, sources
 
 #templates for diff modes
 rag_template = PromptTemplate(
@@ -54,8 +63,12 @@ rag_template = PromptTemplate(
 Rules:
 1. Answer only from the context. If the answer is not present, say: "I don't have that information in the uploaded documents."
 2. Keep answers concise — one sentence for facts, up to 3 bullets for explanations.
-3. Use inline citations in brackets, like [1] or [2], immediately after the sentence they support.
-4. If context is partial, start with: "Based on available documents: "
+3. Every factual sentence must end with at least one citation in square brackets, like [1] or [2].
+4. If a sentence is supported by multiple sources, cite all of them, like [1][3].
+5. Do not include any factual sentence without a citation.
+6. Only use citation numbers that appear in the context.
+7. Do not cite a source unless it directly supports the sentence.
+8. If context is partial, start with: "Based on available documents: "
 
 Context:
 {context}
@@ -65,12 +78,68 @@ Answer:"""
 )
 
 analysis_template = PromptTemplate(
-    
+    input_variables=["context", "question", "pandas_summary"],
+    template="""You are a data analysis assistant. Answer the user's question using ONLY:
+1. the retrieved document context below, and
+2. the pandas summary/statistical findings below.
+
+Rules:
+1. Base your answer only on the provided context and pandas summary.
+2. Every factual sentence supported by retrieved document context must end with at least one citation in square brackets, like [1] or [2].
+3. If a sentence uses multiple retrieved sources, cite all of them, like [1][3].
+4. Do not include any factual statement from the retrieved documents without a citation.
+5. Use the pandas summary for numerical/statistical insight, but do not invent values not shown there.
+6. If the documents and pandas summary are insufficient, say so clearly.
+7. Keep the answer concise but analytical.
+
+Retrieved context:
+{context}
+
+Pandas summary:
+{pandas_summary}
+
+Question:
+{question}
+
+Answer:"""
 )
 
+def _translate_analysis_query(query: str, metadata_hint: str) -> str:
+    translation_prompt = f"""
+You are helping rewrite a user query for retrieval over uploaded documents.
 
-def _generate_answer(query: str, context: str):
-    prompt = template.format(context=context, question=query)
+Goal:
+Rewrite the query so it is easier to retrieve relevant document chunks.
+
+Use the tabular metadata only to add useful schema terms like file names, column names, or table hints.
+Do NOT answer the question.
+Do NOT include full explanations.
+Return only one rewritten retrieval query.
+
+User query:
+{query}
+
+Tabular metadata:
+{metadata_hint}
+
+Rewritten retrieval query:
+""".strip()
+
+    response = llm.invoke(translation_prompt)
+    return response.content.strip()
+
+
+def _generate_rag_answer(query: str, context: str):
+    prompt = rag_template.format(context=context, question=query)
+    response = llm.invoke(prompt)
+    return response.content
+
+def _generate_analysis_answer(query: str, context: str, summary: str):
+    prompt = analysis_template.format(
+        context=context,
+        question=query,
+        pandas_summary=summary
+    )
     response = llm.invoke(prompt)
     return response.content
 
