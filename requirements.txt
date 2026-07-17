@@ -1,5 +1,5 @@
 chromadb
-glob
+fastapi
 langchain
 langchain-anthropic
 langchain-community
@@ -7,6 +7,9 @@ langchain-huggingface
 langchain-text-splitters
 pandas
 pdfplumber
+pydantic
 pypdf
 python-dotenv
-re
+python-multipart
+sentence-transformers
+uvicorn

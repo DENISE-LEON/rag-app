@@ -1,8 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException  
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from enum import Enum
 from backend.core.file_loader import ingest_files
-from backend.core.mode_pipelines import determine_best_mode
+from backend.core.mode_helper import determine_best_mode
 from backend.core.rag import rag_pipeline, analysis_pipeline
 from backend.core.aggregates import pandas_pipeline
 
@@ -80,7 +80,7 @@ async def ask_query(
     if not all_docs:
         return {"message": "No files found"}
     #2. Determine best mode based on file types + query
-    suggested_mode, reason = determine_best_mode(query_request.query, has_tabular, has_text)
+    suggested_mode, reason = determine_best_mode(query_request_data.query, has_tabular, has_text)
     if suggested_mode != mode:
         if not want_to_switch:
             return {
@@ -94,21 +94,21 @@ async def ask_query(
     #match mode to pipeline
     match mode:
         case QueryMode.ANALYSIS:
-            response, sources = analysis_pipeline(query_request.query, all_docs, tabular_files)
+            response, sources = analysis_pipeline(query_request_data.query, all_docs, tabular_files)
             return {"response": response, 
             "sources": sources, 
             "message": "Analysis mode selected", 
-            "query": query_request.query}
+            "query": query_request_data.query}
         case QueryMode.QUICKSTATS:
-            response = pandas_pipeline(query_request.query, tabular_files)
+            response = pandas_pipeline(query_request_data.query, tabular_files)
             return {"response": response, 
             "message": "Quickstats mode selected", 
-            "query": query_request.query}
+            "query": query_request_data.query}
         case QueryMode.RAG: 
-            response, sources = rag_pipeline(query_request.query, all_docs)
+            response, sources = rag_pipeline(query_request_data.query, all_docs)
             return {"response": response, 
             "sources": sources, 
             "message": "RAG mode selected", 
-            "query": query_request.query}
+            "query": query_request_data.query}
         case _:
             raise HTTPException(status_code=400, detail="Invalid mode selected")
