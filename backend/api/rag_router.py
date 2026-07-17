@@ -1,9 +1,10 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException  
-import json
 from pydantic import BaseModel
 from enum import Enum
-from backend file_loader import ingest_files
-from backend.mode_pipelines import pandas_pipeline, rag_pipeline, determine_best_mode
+from backend.core.file_loader import ingest_files
+from backend.core.mode_pipelines import determine_best_mode
+from backend.core.rag import rag_pipeline, analysis_pipeline
+from backend.core.aggregates import pandas_pipeline
 
 class QueryMode(str, Enum):
     ANALYSIS = "analysis"
@@ -35,12 +36,11 @@ class UserIntent(str, Enum):
         return descriptions.get(self, "")
 
 class QueryRequest(BaseModel):
-    query: str
-    mode: QueryMode
+    query: str 
+    mode: QueryMode 
 
 
 router = APIRouter()
-mode = QueryMode
 @router.get("/welcome_page")
 async def welcome_pg(intent: UserIntent): 
     match intent:
@@ -59,19 +59,26 @@ async def welcome_pg(intent: UserIntent):
 
 @router.post("/ask_query")
 async def ask_query(
-        query_request: QueryRequest,
-        file: UploadFile = File(...),
-        want_to_switch: bool = Form(...),
-        ):
-        mode = query_request.mode
+    query_request: str = Form(...),
+    file: UploadFile = File(...),
+    want_to_switch: bool = Form(...),
+):
+    try:
+        query_request_data = QueryRequest.model_validate_json(query_request)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
+    mode = query_request_data.mode
     #1. Ingest files and classify them
     ingested = await ingest_files([file])
-    all_docs = ingested["all_documents"]
+    all_docs = ingested["all_docs"]
     has_tabular = ingested["has_tabular"]
     has_text = ingested["has_text"]
     tabular_files = ingested["tabular_files"]
     text_files = ingested["text_files"]
-
+    #handle if no files are present
+    if not all_docs:
+        return {"message": "No files found"}
     #2. Determine best mode based on file types + query
     suggested_mode, reason = determine_best_mode(query_request.query, has_tabular, has_text)
     if suggested_mode != mode:
@@ -87,13 +94,21 @@ async def ask_query(
     #match mode to pipeline
     match mode:
         case QueryMode.ANALYSIS:
-            # Handle analysis mode
-            return {"message": "Analysis mode selected", "query": query_request.query}
+            response, sources = analysis_pipeline(query_request.query, all_docs, tabular_files)
+            return {"response": response, 
+            "sources": sources, 
+            "message": "Analysis mode selected", 
+            "query": query_request.query}
         case QueryMode.QUICKSTATS:
             response = pandas_pipeline(query_request.query, tabular_files)
-            return {"message": "Quickstats mode selected", "query": query_request.query, "response": response}
+            return {"response": response, 
+            "message": "Quickstats mode selected", 
+            "query": query_request.query}
         case QueryMode.RAG: 
-            response = rag_pipeline(query_request.query, all_docs)
-            return {"message": "RAG mode selected", "query": query_request.query, "response": response}
+            response, sources = rag_pipeline(query_request.query, all_docs)
+            return {"response": response, 
+            "sources": sources, 
+            "message": "RAG mode selected", 
+            "query": query_request.query}
         case _:
             raise HTTPException(status_code=400, detail="Invalid mode selected")
