@@ -1,3 +1,0 @@
-This is the second sample text file.
-It includes different content to demonstrate variety.
-Useful for testing document ingestion in RAG systems.
