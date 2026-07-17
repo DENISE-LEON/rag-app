@@ -60,7 +60,7 @@ async def welcome_pg(intent: UserIntent):
 @router.post("/ask_query")
 async def ask_query(
     query_request: str = Form(...),
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     want_to_switch: bool = Form(...),
 ):
     try:
@@ -70,7 +70,7 @@ async def ask_query(
 
     mode = query_request_data.mode
     #1. Ingest files and classify them
-    ingested = await ingest_files([file])
+    ingested = await ingest_files(files)
     all_docs = ingested["all_docs"]
     has_tabular = ingested["has_tabular"]
     has_text = ingested["has_text"]
