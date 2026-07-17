@@ -6,7 +6,8 @@ import pandas as pd
 import csv
 import pdfplumber
 import tempfile
-from langchain_community.document_loaders import PyPDFLoader, CSVLoader, TextLoader, StructuredExcelLoader
+from langchain_community.document_loaders import PyPDFLoader, CSVLoader, TextLoader
+from langchain_community.document_loaders.excel import UnstructuredExcelLoader
 from fastapi import UploadFile
 
 TABULAR_EXTENSIONS = {"csv", "xlsx", "xls", "tsv"}
@@ -17,8 +18,8 @@ loaders = {
     ".pdf": PyPDFLoader,
     ".txt": TextLoader,
     ".csv": CSVLoader,
-    ".xls": StructuredExcelLoader,
-    ".xlsx": StructuredExcelLoader,
+    ".xls": UnstructuredExcelLoader,
+    ".xlsx": UnstructuredExcelLoader,
     ".tsv": CSVLoader,
 }
 

@@ -1,7 +1,6 @@
 #read files
 import os 
-#for reading .env file
-from dotenv import load_dotenv
+
 #text splitters
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 # Embeddings turn text into mathematical vectors (numbers)
@@ -10,16 +9,15 @@ from langchain_anthropic import ChatAnthropic
 #database that stores and searches those mathematical vectors
 from langchain_community.vectorstores import Chroma
 # Chain connects the database to the LLM to provide the final answer
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain.core.messages import HumanMessage
+from langchain_classic.chains import RetrievalQA
+from langchain_core.prompts import PromptTemplate
+from langchain_core.messages import HumanMessage
 #processes query + docs, calculates token level similarity
 from sentence_transformers import CrossEncoder
 from backend.core.aggregates import build_pandas_summary, _build_tabular_metadata_hint
 import backend.config as cfg
 #read the .env file and get the API key
-load_dotenv()
-api_key = os.getenv("ANTHROPIC_API_KEY")
+
 llm = cfg.llm
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
