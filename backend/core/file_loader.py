@@ -6,14 +6,11 @@ import pandas as pd
 import csv
 import pdfplumber
 import tempfile
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, CSVLoader, TextLoader, StructuredExcelLoader
-from langchain.schema import Document
+from langchain_community.document_loaders import PyPDFLoader, CSVLoader, TextLoader, StructuredExcelLoader
 from fastapi import UploadFile
 
 TABULAR_EXTENSIONS = {"csv", "xlsx", "xls", "tsv"}
 TEXT_EXTENSIONS = {"pdf", "txt", "docx", "md"}
-
-#1. load the docs
 
 #dictionary to map file extensions to their respective loaders
 loaders = {
@@ -31,7 +28,7 @@ loaders = {
 #3. classify files by type (tabular or text)
 #4. load tabular files to dataframes
 #5. return dict
-# return metadat to be later used by other functions(list of tabular, text, langchain docs)
+# return metadata to be later used by other functions(list of tabular, text, langchain docs)
 # return bools indicating if there are tabular or text files to be used by determine_best_mode
 async def ingest_files(files: list[UploadFile]) -> dict:
     all_docs = []
@@ -40,14 +37,14 @@ async def ingest_files(files: list[UploadFile]) -> dict:
 
     for file in files:
         contents = await file.read()
-        docs = load_documents_to_langchain(file.filename, contents)
+        docs = _load_documents_to_langchain(file.filename, contents)
         all_docs.append(docs)
 
-        file_type = get_file_type(file.filename)
-        file_type = reclassify_if_tabular(file.filename, contents, file_type)
+        file_type = _get_file_type(file.filename)
+        file_type = _reclassify_if_tabular(file.filename, contents, file_type)
    
         if file_type == "tabular":
-            tab_result = load_tabular_to_dfs(file.filename, contents)
+            tab_result = _load_tabular_to_dfs(file.filename, contents)
             tabular_results.append(tab_result)
         elif file_type == "text":
             text_results.append(docs)
@@ -60,9 +57,9 @@ async def ingest_files(files: list[UploadFile]) -> dict:
         "text_files": text_results
     }
 #load docs to langchain document objects, which are used for analysis and RAG
-def load_documents_to_langchain(filename: str, contents: bytes):
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "txt"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+def _load_documents_to_langchain(filename: str, contents: bytes):
+    ext = f".{filename.rsplit('.', 1)[-1].lower()}" if "." in filename else ".txt"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
         tmp.write(contents)
         tmp_path = tmp.name
 
@@ -85,7 +82,7 @@ def load_documents_to_langchain(filename: str, contents: bytes):
         "extension": ext,
     }
 
-def load_tabular_to_dfs(file_name: str, contents: bytes) -> dict:
+def _load_tabular_to_dfs(file_name: str, contents: bytes) -> dict:
     ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else "csv"
     if ext in {"xlsx", "xls"}:
         df = pd.read_excel(io.BytesIO(contents))
@@ -106,7 +103,7 @@ def load_tabular_to_dfs(file_name: str, contents: bytes) -> dict:
         "extension": ext
     }
 #first classify by extension
-def get_file_type(file_name: str) -> str:
+def _get_file_type(file_name: str) -> str:
     #rsplit starts from the right
     ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
     if ext in TABULAR_EXTENSIONS:
@@ -117,7 +114,7 @@ def get_file_type(file_name: str) -> str:
         return "unknown"
 
 #catches txt or pdf files that have tabular content
-def reclassify_if_tabular(file_name: str, contents: bytes, current_type:str) -> str:
+def _reclassify_if_tabular(file_name: str, contents: bytes, current_type:str) -> str:
     ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
 
     if ext == "pdf":
@@ -126,7 +123,7 @@ def reclassify_if_tabular(file_name: str, contents: bytes, current_type:str) -> 
         return _check_text_for_delimiters(contents)
 
     return current_type
-def _check_text_for_delimiters(contents: bytes) -> bool:
+def _check_text_for_delimiters(contents: bytes) -> str:
     try:
         #reads the first 2048 bytes of the file, converts bytes to readable string, skip invalid characters
         sniff_content = contents[:2048].decode("utf-8", errors="ignore")
@@ -147,7 +144,7 @@ def _check_pdf_for_tables(contents: bytes) -> str:
                 tables = page.extract_tables()
                 if tables:
                     return "tabular"
-    except Exception as e:
+    except Exception:
         pass
     return "text"
 
@@ -171,8 +168,8 @@ def _extract_pdf_tables(contents: bytes) -> list:
                     df.attrs["source_page"] = page_num + 1
                     dataframes.append(df)
 
-    except Exception as e:
-        print(f"Warning: PDF table extraction failed — {e}")
+    except Exception:
+        print(f"Warning: PDF table extraction failed")
 
     return dataframes
 
