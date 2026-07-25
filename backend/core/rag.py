@@ -1,5 +1,3 @@
-#read files
-import os 
 
 #text splitters
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -9,25 +7,23 @@ from langchain_anthropic import ChatAnthropic
 #database that stores and searches those mathematical vectors
 from langchain_community.vectorstores import Chroma
 # Chain connects the database to the LLM to provide the final answer
-from langchain_classic.chains import RetrievalQA
 from langchain_core.prompts import PromptTemplate
-from langchain_core.messages import HumanMessage
 #processes query + docs, calculates token level similarity
 from sentence_transformers import CrossEncoder
 from backend.core.aggregates import build_pandas_summary, _build_tabular_metadata_hint
 import backend.config as cfg
-#read the .env file and get the API key
+from backend.core.cache import get_vectorestore, set_vectorestore
 
 llm = cfg.llm
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-def rag_pipeline(query:str, all_docs):
+def rag_pipeline(query:str, all_docs, file_signature):
     #retrieve the actual langchain docs from the all_docs list(which contains a dict of metadata)
     docs = _flatten_docs(all_docs)
     #split and embed the langchain docs
-    vector_store = _embed_docs(docs)
+    vector_store = _get_or_create_vectorstore(docs, file_signature)
     #retrieve relevant docs and answer query
     retrieved_docs = _retrieve_docs(query,vector_store)
     #rerank retrieved docs 
@@ -37,9 +33,9 @@ def rag_pipeline(query:str, all_docs):
     response = _generate_rag_answer(query, context)
     return response, sources
 #same pipeline as rag, only differences are the prompt template & query translation
-def analysis_pipeline(query: str, all_docs, tabular_files):
+def analysis_pipeline(query: str, all_docs, tabular_files, file_signature):
     docs = _flatten_docs(all_docs)
-    vector_store = _embed_docs(docs)
+    vector_store = _get_or_create_vectorstore(docs, file_signature)
 
     metadata_hint = _build_tabular_metadata_hint(tabular_files)
     translated_query = _translate_analysis_query(query, metadata_hint)
@@ -207,18 +203,27 @@ def _retrieve_docs(query:str,vector_store):
     return retrieved_docs
 
 
-def _embed_docs(docs):
+def _embed_docs(docs, file_signature):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
      chunk_overlap=150,
      #structure aware text splitting
      separators=["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " ", ""],)
-
     splits = text_splitter.split_documents(docs)
     vectorstore = Chroma.from_documents( #turns vectors into searchable index used for semantics
         documents=splits, 
         embedding= embedding_model #converts text chunks into vectors
         )
+    print("CREATING NEW VECTOR STORE")
     return vectorstore
+
+def _get_or_create_vectorstore(docs, file_signature):
+    vector_store = get_vectorstore(file_signature)
+
+    if vector_store is None:
+        vector_store = _embed_docs(docs)
+        set_vectorstore(file_signature, vector_store)
+
+    return vector_store
 
 #retrieve the actual docs
 def _flatten_docs(all_docs):

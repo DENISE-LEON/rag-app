@@ -5,6 +5,7 @@ from backend.core.file_loader import ingest_files
 from backend.core.mode_helper import determine_best_mode
 from backend.core.rag import rag_pipeline, analysis_pipeline
 from backend.core.aggregates import pandas_pipeline
+from backend.core.cache import compute_doc_signature
 
 class QueryMode(str, Enum):
     ANALYSIS = "analysis"
@@ -61,16 +62,20 @@ async def welcome_pg(intent: UserIntent):
 async def ask_query(
     query_request: str = Form(...),
     files: list[UploadFile] = File(...),
-    want_to_switch: bool = Form(...),
+    want_to_switch: bool = Form(False),
 ):
     try:
         query_request_data = QueryRequest.model_validate_json(query_request)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
-
+    contents_list = []
+    for file in files:
+        file_bytes = await file.read()
+        contents_list.append(file_bytes)
     mode = query_request_data.mode
-    #1. Ingest files and classify them
-    ingested = await ingest_files(files)
+        #1. Ingest files and classify them
+    files_signature = compute_doc_signature(files, contents_list)
+    ingested = await ingest_files(files, contents_list)
     all_docs = ingested["all_docs"]
     has_tabular = ingested["has_tabular"]
     has_text = ingested["has_text"]
@@ -94,7 +99,7 @@ async def ask_query(
     #match mode to pipeline
     match mode:
         case QueryMode.ANALYSIS:
-            response, sources = analysis_pipeline(query_request_data.query, all_docs, tabular_files)
+            response, sources = analysis_pipeline(query_request_data.query, all_docs, tabular_files, files_signature)
             return {"response": response, 
             "sources": sources, 
             "message": "Analysis mode selected", 
@@ -105,7 +110,7 @@ async def ask_query(
             "message": "Quickstats mode selected", 
             "query": query_request_data.query}
         case QueryMode.RAG: 
-            response, sources = rag_pipeline(query_request_data.query, all_docs)
+            response, sources = rag_pipeline(query_request_data.query, all_docs, files_signature)
             return {"response": response, 
             "sources": sources, 
             "message": "RAG mode selected", 
