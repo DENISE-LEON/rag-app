@@ -5,7 +5,7 @@ from backend.core.file_loader import ingest_files
 from backend.core.mode_helper import determine_best_mode
 from backend.core.rag import rag_pipeline, analysis_pipeline
 from backend.core.aggregates import pandas_pipeline
-from backend.core.cache import compute_doc_signature
+from backend.core.cache import compute_doc_signature, compute_response_cache_signature
 
 class QueryMode(str, Enum):
     ANALYSIS = "analysis"
@@ -63,6 +63,7 @@ async def ask_query(
     query_request: str = Form(...),
     files: list[UploadFile] = File(...),
     want_to_switch: bool = Form(False),
+    session_id: str = Form(...),
 ):
     try:
         query_request_data = QueryRequest.model_validate_json(query_request)
@@ -73,8 +74,9 @@ async def ask_query(
         file_bytes = await file.read()
         contents_list.append(file_bytes)
     mode = query_request_data.mode
-        #1. Ingest files and classify them
-    files_signature = compute_doc_signature(files, contents_list)
+    
+    source_signature = compute source_signature(files, contents_list)
+
     ingested = await ingest_files(files, contents_list)
     all_docs = ingested["all_docs"]
     has_tabular = ingested["has_tabular"]
@@ -96,10 +98,30 @@ async def ask_query(
             }
         else:
             mode = QueryMode(suggested_mode)
-    #match mode to pipeline
+
+    response_cache_signature = compute_response_cache_signature(
+        session_id=session_id,
+        source_signature=source_signature,
+        mode=mode.value,
+        query=query_request_data.query,
+    )
+
+    cached_response = get_response(response_cache_signature)
+
+    if cached_response is not None:
+        return {
+            "response": cached_response
+        ["response"],
+            "sources": cached_response
+        ["sources"],
+            "message": f"{mode.value.capitalize()} mode selected",
+            "query": query_request_data.query,
+            "cached": True,
+        }
+    #match mode to pipeline    
     match mode:
         case QueryMode.ANALYSIS:
-            response, sources = analysis_pipeline(query_request_data.query, all_docs, tabular_files, files_signature)
+            response, sources = analysis_pipeline(query_request_data.query, all_docs, tabular_files, source_signature)
             return {"response": response, 
             "sources": sources, 
             "message": "Analysis mode selected", 
@@ -110,7 +132,7 @@ async def ask_query(
             "message": "Quickstats mode selected", 
             "query": query_request_data.query}
         case QueryMode.RAG: 
-            response, sources = rag_pipeline(query_request_data.query, all_docs, files_signature)
+            response, sources = rag_pipeline(query_request_data.query, all_docs, source_signature)
             return {"response": response, 
             "sources": sources, 
             "message": "RAG mode selected", 

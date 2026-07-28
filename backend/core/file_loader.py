@@ -31,13 +31,13 @@ loaders = {
 #5. return dict
 # return metadata to be later used by other functions(list of tabular, text, langchain docs)
 # return bools indicating if there are tabular or text files to be used by determine_best_mode
-async def ingest_files(files: list[UploadFile]) -> dict:
+
+async def ingest_files(files: list[UploadFile], contents_list: list[bytes]) -> dict:
     all_docs = []
     tabular_results = []
     text_results = []
-
-    for file in files:
-        contents = await file.read()
+    #zip aggregates contents list and files into iterator tuple
+    for file, contents in zip(files, contents_list):
         docs = _load_documents_to_langchain(file.filename, contents)
         all_docs.append(docs)
 
@@ -57,7 +57,19 @@ async def ingest_files(files: list[UploadFile]) -> dict:
         "tabular_files": tabular_results,
         "text_files": text_results
     }
-#load docs to langchain document objects, which are used for analysis and RAG
+
+def get_doc_metadata(file, contents):
+    file_name = file.filename
+    ext = f".{file_name.rsplit('.', 1)[-1].lower()}" if "." in file_name else ".txt"
+    size = len(contents)
+
+    return {
+        "file_name": file_name,
+        "extension": ext,
+        "size_bytes": size
+    }
+
+
 def _load_documents_to_langchain(filename: str, contents: bytes):
     ext = f".{filename.rsplit('.', 1)[-1].lower()}" if "." in filename else ".txt"
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:

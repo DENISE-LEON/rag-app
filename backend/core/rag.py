@@ -5,37 +5,48 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_anthropic import ChatAnthropic
 #database that stores and searches those mathematical vectors
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 # Chain connects the database to the LLM to provide the final answer
 from langchain_core.prompts import PromptTemplate
 #processes query + docs, calculates token level similarity
 from sentence_transformers import CrossEncoder
 from backend.core.aggregates import build_pandas_summary, _build_tabular_metadata_hint
 import backend.config as cfg
-from backend.core.cache import get_vectorestore, set_vectorestore
+from backend.core.cache import get_vectorstore, set_vectorstore, get_response, set_response
 
 llm = cfg.llm
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-def rag_pipeline(query:str, all_docs, file_signature):
+def rag_pipeline(
+    query:str, 
+    all_docs:list[dict], 
+    file_session_signature:str, 
+    response_cache_signature:str
+    ):
     #retrieve the actual langchain docs from the all_docs list(which contains a dict of metadata)
     docs = _flatten_docs(all_docs)
     #split and embed the langchain docs
-    vector_store = _get_or_create_vectorstore(docs, file_signature)
+    vector_store = _get_or_create_vectorstore(docs, file_session_signature)
     #retrieve relevant docs and answer query
     retrieved_docs = _retrieve_docs(query,vector_store)
     #rerank retrieved docs 
     reranked_docs = _rerank_docs(query, retrieved_docs)
     #get the docs metadata and format for llm to cite
     context, sources = _build_cited_context(reranked_docs)
-    response = _generate_rag_answer(query, context)
+    response = _generate_rag_response(query, context)
     return response, sources
 #same pipeline as rag, only differences are the prompt template & query translation
-def analysis_pipeline(query: str, all_docs, tabular_files, file_signature):
+def analysis_pipeline(
+    query: str, 
+    all_docs: list[dict], 
+    tabular_files: list[dict], 
+    file_session_signature: str
+    response_cache_signature: str
+    ):
     docs = _flatten_docs(all_docs)
-    vector_store = _get_or_create_vectorstore(docs, file_signature)
+    vector_store = _get_or_create_vectorstore(docs, file_session_signature)
 
     metadata_hint = _build_tabular_metadata_hint(tabular_files)
     translated_query = _translate_analysis_query(query, metadata_hint)
@@ -45,8 +56,7 @@ def analysis_pipeline(query: str, all_docs, tabular_files, file_signature):
 
     context, sources = _build_cited_context(reranked_docs)
     summary = build_pandas_summary(tabular_files)
-
-    response = _generate_analysis_answer(query, context, summary)
+    response = _generate_analysis_response(query, context, summary)
     return response, sources
 
 #templates for diff modes
@@ -203,7 +213,7 @@ def _retrieve_docs(query:str,vector_store):
     return retrieved_docs
 
 
-def _embed_docs(docs, file_signature):
+def _embed_docs(docs):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
      chunk_overlap=150,
      #structure aware text splitting
@@ -216,8 +226,8 @@ def _embed_docs(docs, file_signature):
     print("CREATING NEW VECTOR STORE")
     return vectorstore
 
-def _get_or_create_vectorstore(docs, file_signature):
-    vector_store = get_vectorstore(file_signature)
+def _get_or_create_vectorstore(docs, file_session_signature):
+    vector_store = get_vectorstore(file_session_signature)
 
     if vector_store is None:
         vector_store = _embed_docs(docs)
