@@ -22,13 +22,12 @@ reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 def rag_pipeline(
     query:str, 
     all_docs:list[dict], 
-    file_session_signature:str, 
-    response_cache_signature:str
+    source_signature:str,
     ):
     #retrieve the actual langchain docs from the all_docs list(which contains a dict of metadata)
     docs = _flatten_docs(all_docs)
     #split and embed the langchain docs
-    vector_store = _get_or_create_vectorstore(docs, file_session_signature)
+    vector_store = _get_or_create_vectorstore(docs, source_signature)
     #retrieve relevant docs and answer query
     retrieved_docs = _retrieve_docs(query,vector_store)
     #rerank retrieved docs 
@@ -42,11 +41,10 @@ def analysis_pipeline(
     query: str, 
     all_docs: list[dict], 
     tabular_files: list[dict], 
-    file_session_signature: str
-    response_cache_signature: str
+    source_signature: str
     ):
     docs = _flatten_docs(all_docs)
-    vector_store = _get_or_create_vectorstore(docs, file_session_signature)
+    vector_store = _get_or_create_vectorstore(docs, source_signature)
 
     metadata_hint = _build_tabular_metadata_hint(tabular_files)
     translated_query = _translate_analysis_query(query, metadata_hint)

@@ -19,7 +19,7 @@ def compute_source_signature(files: list, contents_list: list[bytes]) -> str:
 
 def compute_response_cache_signature(
     session_id: str,
-    file_signature: str,
+    source_signature: str,
     mode: str,
     query: str,
 ) -> str:
@@ -35,14 +35,14 @@ def compute_response_cache_signature(
 
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
-def get_vectorstore(file_session_signature: str):
+def get_vectorstore(source_signature: str):
     #if file signature not in cache, automatically return None with .get
     return vector_store_cache.get(file_session_signature)
 
-def set_vectorstore(file_session_signature: str, vector_store):
+def set_vectorstore(source_signature: str, vector_store):
     vector_store_cache[file_session_signature] = vector_store
 
-def get_response(response_cache_signature:str) -> str:
+def get_response(response_cache_signature:str):
     return response_cache.get(response_cache_signature)
 
 def set_response(response_cache_signature: str, response: str, sources: list):

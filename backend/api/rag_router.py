@@ -75,7 +75,7 @@ async def ask_query(
         contents_list.append(file_bytes)
     mode = query_request_data.mode
     
-    source_signature = compute source_signature(files, contents_list)
+    source_signature = compute_source_signature(files, contents_list)
 
     ingested = await ingest_files(files, contents_list)
     all_docs = ingested["all_docs"]
@@ -109,33 +109,38 @@ async def ask_query(
     cached_response = get_response(response_cache_signature)
 
     if cached_response is not None:
-        return {
-            "response": cached_response
-        ["response"],
-            "sources": cached_response
-        ["sources"],
-            "message": f"{mode.value.capitalize()} mode selected",
-            "query": query_request_data.query,
-            "cached": True,
-        }
+    return {
+        "response": cached_response["response"],
+        "sources": cached_response["sources"],
+        "message": f"{mode.value.capitalize()} mode selected",
+        "query": query_request_data.query,
+        "cached": True,
+    }
     #match mode to pipeline    
     match mode:
+        sources = []
         case QueryMode.ANALYSIS:
-            response, sources = analysis_pipeline(query_request_data.query, all_docs, tabular_files, source_signature)
-            return {"response": response, 
-            "sources": sources, 
-            "message": "Analysis mode selected", 
-            "query": query_request_data.query}
+            response, sources = analysis_pipeline(
+                query_request_data.query,
+                all_docs,
+                tabular_files,
+                source_signature,
+            )
+
         case QueryMode.QUICKSTATS:
-            response = pandas_pipeline(query_request_data.query, tabular_files)
-            return {"response": response, 
-            "message": "Quickstats mode selected", 
-            "query": query_request_data.query}
-        case QueryMode.RAG: 
-            response, sources = rag_pipeline(query_request_data.query, all_docs, source_signature)
-            return {"response": response, 
-            "sources": sources, 
-            "message": "RAG mode selected", 
-            "query": query_request_data.query}
+            response = pandas_pipeline(
+                query_request_data.query,
+                tabular_files,
+            )
+        case QueryMode.RAG:
+            response, sources = rag_pipeline(
+                query_request_data.query,
+                all_docs,
+                source_signature,
+            )
+
         case _:
-            raise HTTPException(status_code=400, detail="Invalid mode selected")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid mode selected",
+            )
