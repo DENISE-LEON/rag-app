@@ -5,7 +5,8 @@ from backend.core.file_loader import ingest_files
 from backend.core.mode_helper import determine_best_mode
 from backend.core.rag import rag_pipeline, analysis_pipeline
 from backend.core.aggregates import pandas_pipeline
-from backend.core.cache import compute_doc_signature, compute_response_cache_signature
+from backend.core.cache import compute_source_signature, compute_response_cache_signature, get_response, set_response
+
 
 class QueryMode(str, Enum):
     ANALYSIS = "analysis"
@@ -52,18 +53,19 @@ async def welcome_pg(intent: UserIntent):
         case UserIntent.UNSURE:
             default_mode = QueryMode.RAG
 
-    return {"message": "Welcome to the advanced AI chatbot!",
-            "default_mode": default_mode,
-            "intents": {intent.value: intent.description for intent in UserIntent}
-            
-            }
+    return {
+        "message": "Welcome to the RAG AI chatbot!",
+        "default_mode": default_mode,
+        "intents": {intent.value: intent.description for intent in UserIntent}
+    
+         }
 
 @router.post("/ask_query")
 async def ask_query(
     query_request: str = Form(...),
     files: list[UploadFile] = File(...),
     want_to_switch: bool = Form(False),
-    session_id: str = Form(...),
+    session_id: str = None or Form(...) ,
 ):
     try:
         query_request_data = QueryRequest.model_validate_json(query_request)
@@ -109,16 +111,15 @@ async def ask_query(
     cached_response = get_response(response_cache_signature)
 
     if cached_response is not None:
-    return {
-        "response": cached_response["response"],
-        "sources": cached_response["sources"],
-        "message": f"{mode.value.capitalize()} mode selected",
-        "query": query_request_data.query,
-        "cached": True,
-    }
+        return {
+            "response": cached_response["response"],
+            "sources": cached_response["sources"],
+            "message": f"{mode.value.capitalize()} mode selected",
+            "query": query_request_data.query,
+            "cached": True,
+        }
     #match mode to pipeline    
     match mode:
-        sources = []
         case QueryMode.ANALYSIS:
             response, sources = analysis_pipeline(
                 query_request_data.query,
@@ -144,3 +145,16 @@ async def ask_query(
                 status_code=400,
                 detail="Invalid mode selected",
             )
+    set_response(
+        response_cache_signature,
+        response,
+        sources,
+    )
+
+    return {
+        "response": response,
+        "sources": sources,
+        "message": f"{mode.value.capitalize()} mode selected",
+        "query": query_request_data.query,
+        "cached": False,
+    }
