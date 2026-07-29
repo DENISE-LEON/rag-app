@@ -34,7 +34,7 @@ def rag_pipeline(
     reranked_docs = _rerank_docs(query, retrieved_docs)
     #get the docs metadata and format for llm to cite
     context, sources = _build_cited_context(reranked_docs)
-    response = _generate_rag_response(query, context)
+    response = _generate_rag_answer(query, context)
     return response, sources
 #same pipeline as rag, only differences are the prompt template & query translation
 def analysis_pipeline(
@@ -54,7 +54,7 @@ def analysis_pipeline(
 
     context, sources = _build_cited_context(reranked_docs)
     summary = build_pandas_summary(tabular_files)
-    response = _generate_analysis_response(query, context, summary)
+    response = _generate_analysis_answer(query, context, summary)
     return response, sources
 
 #templates for diff modes

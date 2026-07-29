@@ -100,7 +100,7 @@ async def ask_query(
                 "awaiting_confirmation": True
             }
         if want_to_switch:
-            mode = suggested_mode
+            mode = QueryMode(suggested_mode)
 
     response_cache_signature = compute_response_cache_signature(
         session_id=session_id,
