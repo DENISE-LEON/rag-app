@@ -224,12 +224,12 @@ def _embed_docs(docs):
     print("CREATING NEW VECTOR STORE")
     return vectorstore
 
-def _get_or_create_vectorstore(docs, file_session_signature):
-    vector_store = get_vectorstore(file_session_signature)
+def _get_or_create_vectorstore(docs, source_signature):
+    vector_store = get_vectorstore(source_signature)
 
     if vector_store is None:
         vector_store = _embed_docs(docs)
-        set_vectorstore(file_signature, vector_store)
+        set_vectorstore(source_signature, vector_store)
 
     return vector_store
 

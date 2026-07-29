@@ -65,7 +65,8 @@ async def ask_query(
     query_request: str = Form(...),
     files: list[UploadFile] = File(...),
     want_to_switch: bool = Form(False),
-    session_id: str = None or Form(...) ,
+    session_id: str = Form(...) ,
+    mode_confirmed: bool = Form(False),
 ):
     try:
         query_request_data = QueryRequest.model_validate_json(query_request)
@@ -91,15 +92,15 @@ async def ask_query(
     #2. Determine best mode based on file types + query
     suggested_mode, reason = determine_best_mode(query_request_data.query, has_tabular, has_text)
     if suggested_mode != mode:
-        if not want_to_switch:
+        if not mode_confirmed:
             return {
                 "message": f"Suggested mode: {suggested_mode}",
                 "reason": reason,
                 "suggested_mode": suggested_mode,
                 "awaiting_confirmation": True
             }
-        else:
-            mode = QueryMode(suggested_mode)
+        if want_to_switch:
+            mode = suggested_mode
 
     response_cache_signature = compute_response_cache_signature(
         session_id=session_id,
@@ -110,7 +111,8 @@ async def ask_query(
 
     cached_response = get_response(response_cache_signature)
 
-    if cached_response is not None:
+    if cached_response is not None:        
+        print("using cached response")
         return {
             "response": cached_response["response"],
             "sources": cached_response["sources"],
@@ -118,6 +120,7 @@ async def ask_query(
             "query": query_request_data.query,
             "cached": True,
         }
+
     #match mode to pipeline    
     match mode:
         case QueryMode.ANALYSIS:
@@ -133,6 +136,10 @@ async def ask_query(
                 query_request_data.query,
                 tabular_files,
             )
+            #temp fix since quickstats doesn't return sources
+            #future improvement: have quickstats return sources
+            sources = []
+
         case QueryMode.RAG:
             response, sources = rag_pipeline(
                 query_request_data.query,
