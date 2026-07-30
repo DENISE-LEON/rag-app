@@ -1,8 +1,10 @@
 chromadb
 fastapi
 langchain
-langchain-anthropic
+langchain-core
 langchain-community
+langchain-anthropic
+langchain-chroma
 langchain-huggingface
 langchain-text-splitters
 pandas
